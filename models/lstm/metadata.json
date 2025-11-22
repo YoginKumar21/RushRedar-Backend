@@ -1,0 +1,24 @@
+{
+  "seq_length": 48,
+  "features": [
+    "CarCount",
+    "BikeCount",
+    "BusCount",
+    "TruckCount",
+    "Total",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos",
+    "is_weekend",
+    "is_rush_hour",
+    "total_rolling_mean_6",
+    "total_rolling_std_6"
+  ],
+  "horizons": {
+    "15min": 1,
+    "1hr": 4,
+    "2hr": 8,
+    "3hr": 12
+  }
+}

@@ -1,0 +1,77 @@
+# Environment variables
+.env
+
+# Python byte-compiled / optimized files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
+*.egg
+*.whl
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Installer / logs / cache
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.log
+logs/
+
+# Flask instance folder
+instance/
+
+# Secrets and OS files
+.secrets
+secrets.json
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# IDE/editor folders
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large model / data files (do not commit models/datasets)
+models/
+*.h5
+*.hdf5
+*.pth
+*.pt
+*.ckpt
+*.pkl
+*.joblib
+*.sav
+*.npz
+*.npy
+*.csv
+a.csv
+TrafficDataset.csv
+
+# Temporary files
+*.tmp
+*.swp
