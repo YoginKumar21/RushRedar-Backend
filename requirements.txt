@@ -11,3 +11,4 @@ python-dotenv
 xgboost
 catboost
 lightgbm
+gunicorn
