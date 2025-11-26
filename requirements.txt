@@ -7,3 +7,7 @@ scikit-learn
 folium
 requests
 geopy
+python-dotenv
+xgboost
+catboost
+lightgbm

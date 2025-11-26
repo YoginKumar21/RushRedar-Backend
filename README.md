@@ -130,7 +130,3 @@ License & Contributions
 - Add your preferred LICENSE file in repository root.
 - Document contribution guidelines (CONTRIBUTING.md) if others will work on the project.
 
-If you want, I can:
-- generate a sample .env
-- produce example curl/postman collections for each endpoint
-- or update README further with exact request/response schemas after you share app/predictor.py and longpredictor.py
