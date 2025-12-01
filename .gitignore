@@ -69,8 +69,7 @@ models/
 *.npz
 *.npy
 *.csv
-a.csv
-TrafficDataset.csv
+bangalore_traffic.csv
 
 # Temporary files
 *.tmp
