@@ -3,7 +3,22 @@ from flask_cors import CORS
 import pandas as pd
 import numpy as np
 import os
+import logging
 from dotenv import load_dotenv
+import traceback
+import sys
+import logging
+
+# 1. FORCE LOGS TO TERMINAL
+# This tells Python: "Stop writing to files, write to the screen!"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)] # <--- This is the key
+)
+logger = logging.getLogger()
+
+print("--- TERMINAL IS WORKING ---", flush=True)
 
 # Ensure paths are resolved relative to this backend folder
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +33,11 @@ TrafficPredictor = None
 EnsemblePredictor = None
 
 app = Flask(__name__)
-CORS(app) 
+CORS(app)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
@@ -119,36 +138,60 @@ except Exception as e:
 
 
 # 3. Load the Short-Term Dataset for the API
+# 3. Load the Short-Term Dataset for the API
 try:
     print("Loading short-term dataset (bangalore_traffic.csv)...")
     short_term_csv_path = os.path.join(ROOT_DIR, 'bangalore_traffic.csv')
     print(f"Reading short-term CSV from: {short_term_csv_path}")
+    
     short_term_df = pd.read_csv(short_term_csv_path)
-    # Support multiple CSV schemas:
-    # - If file contains 'Date' and 'Time' and 'Total' (original expected schema), use directly.
-    # - If file contains 'Traffic_Volume' (new unified CSV), synthesize required columns.
+
+    # LOGIC: Check columns and normalize
     if 'Date' in short_term_df.columns and 'Time' in short_term_df.columns and 'Total' in short_term_df.columns:
-        short_term_df['datetime'] = pd.to_datetime(short_term_df['Date'] + ' ' + short_term_df['Time'], format='%d-%m-%Y %I:%M:%S %p')
+        # Format A: Original Schema
+        # FIX: Removed rigid format string, let Pandas guess the format
+        short_term_df['datetime'] = pd.to_datetime(short_term_df['Date'] + ' ' + short_term_df['Time'], errors='coerce')
         short_term_df = short_term_df.sort_values('datetime')
+        
     elif 'Traffic_Volume' in short_term_df.columns and 'Date' in short_term_df.columns:
-        print("Detected unified CSV format. Synthesizing columns required for short-term predictor...")
-        # create a Time column (midnight) and create coarse breakdown columns for vehicle types
+        # Format B: Unified Schema (Your File)
+        print("Detected unified CSV format. Synthesizing columns...")
+        
+        # 1. Create a dummy time if missing (Midnight)
         short_term_df['Time'] = '12:00:00 AM'
-        # Map Traffic_Volume -> Total and split into vehicle types heuristically
+        
+        # 2. Map Traffic_Volume -> Total
         short_term_df['Total'] = short_term_df['Traffic_Volume']
+        
+        # 3. Create breakdown columns (Estimates)
         short_term_df['CarCount'] = (short_term_df['Traffic_Volume'] * 0.6).round().astype(int)
         short_term_df['BikeCount'] = (short_term_df['Traffic_Volume'] * 0.2).round().astype(int)
         short_term_df['BusCount'] = (short_term_df['Traffic_Volume'] * 0.1).round().astype(int)
         short_term_df['TruckCount'] = (short_term_df['Traffic_Volume'] * 0.1).round().astype(int)
-        short_term_df['datetime'] = pd.to_datetime(short_term_df['Date'] + ' ' + short_term_df['Time'], format='%d-%m-%Y %I:%M:%S %p')
+        
+        # 4. FIX: Smart Date Parsing (No rigid format)
+        combined_time = short_term_df['Date'].astype(str) + ' ' + short_term_df['Time']
+        short_term_df['datetime'] = pd.to_datetime(combined_time, errors='coerce')
+        
+        # Drop rows where date failed to parse (instead of crashing everything)
+        short_term_df = short_term_df.dropna(subset=['datetime'])
         short_term_df = short_term_df.sort_values('datetime')
+        
     else:
-        raise KeyError("CSV schema not compatible: missing expected columns ('Time'/'Total' or 'Traffic_Volume').")
+        raise KeyError("CSV schema not compatible.")
     
     print(f"✓ Short-term dataset loaded. {len(short_term_df)} rows.")
     
 except Exception as e:
-    print(f"FATAL: Could not load bangalore_traffic.csv: {e}")
+# FORCE PRINT THE ERROR IN RED (if supported) OR JUST TEXT
+    import traceback
+    error_msg = traceback.format_exc()
+    
+    # Write directly to terminal, bypassing any silence
+    sys.stderr.write(f"\n\n{'='*30}\n")
+    sys.stderr.write(f"FATAL STARTUP ERROR:\n{error_msg}")
+    sys.stderr.write(f"{'='*30}\n\n")
+    
     short_term_df = None
 
 # --- API ROUTES ---
@@ -170,18 +213,48 @@ def serve_frontend(path):
     return "Traffic Prediction API (Long & Short Term) is running."
 
 # --- [NEW] ENDPOINT FOR RECENT DATA (FOR LSTM) ---
+# --- [UPDATED] ENDPOINT FOR RECENT DATA ---
 @app.route('/api/get-recent-data', methods=['GET'])
 def get_recent_data():
+    print("Hit /api/get-recent-data endpoint") # Try to force print to terminal
+    
+    # 1. Check if the CSV was loaded at startup
     if short_term_df is None:
-        return jsonify({"error": "Short-term dataset (bangalore_traffic.csv) not loaded"}), 500
+        return jsonify({"error": "CRITICAL: 'short_term_df' is None. 'bangalore_traffic.csv' was not loaded."}), 500
         
     try:
-        recent_df = short_term_df.tail(48)
+        # 2. Get data and create a copy to avoid warnings
+        recent_df = short_term_df.tail(48).copy()
+        
+        # 3. FIX: Convert NaNs to None (JSON standard null)
+        # Pandas uses 'NaN' which crashes JSON. This fixes it.
+        recent_df = recent_df.where(pd.notnull(recent_df), None)
+
+        # 4. FIX: Convert Date/Time objects to Strings
+        # JSON cannot read Python Timestamp objects. This fixes it.
+        for col in recent_df.columns:
+            if pd.api.types.is_datetime64_any_dtype(recent_df[col]):
+                recent_df[col] = recent_df[col].astype(str)
+            # Fallback for object-type columns that might contain timestamps
+            elif recent_df[col].dtype == object:
+                try:
+                    # If a column looks like it has dates, convert to string
+                    sample = recent_df[col].iloc[0] if not recent_df.empty else None
+                    if hasattr(sample, 'isoformat'): # Checks if it's a date/time object
+                         recent_df[col] = recent_df[col].astype(str)
+                except:
+                    pass
+
+        # 5. Convert to dictionary
         data_dicts = recent_df.to_dict('records')
         return jsonify(data_dicts)
         
     except Exception as e:
-        return jsonify({"error": f"Failed to get recent data: {str(e)}"}), 500
+        # 6. CAPTURE THE ERROR
+        # Since your terminal logs are empty, we return the error to the browser.
+        full_error = traceback.format_exc()
+        print(f"Server Error: {full_error}") 
+        return jsonify({"error": "Python Error", "details": full_error}), 500
 
 # --- ENDPOINT 1: SHORT-TERM PREDICTION (LSTM) ---
 @app.route('/api/predict', methods=['POST'])
@@ -257,6 +330,12 @@ def get_traffic_trends():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# --- ENDPOINT 3: WELCOME ---
+@app.route('/api/welcome', methods=['GET'])
+def welcome():
+    logger.info(f"Request received: {request.method} {request.path}")
+    return jsonify({"message": "Welcome to the Flask API Service!"})
 
 
 if __name__ == '__main__':
